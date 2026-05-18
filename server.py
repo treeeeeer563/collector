@@ -8,6 +8,10 @@ CORS(app)
 def log(msg):
     print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
 
+@app.route('/', methods=['GET'])
+def home():
+    return jsonify({'status': 'ok', 'message': 'Server is running'})
+
 @app.route('/api/collect', methods=['POST'])
 def collect():
     data = request.json
