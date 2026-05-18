@@ -7,7 +7,7 @@ import sys
 app = Flask(__name__)
 CORS(app)
 
-GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwljXNeF4qRjv3zp_Y4L3kgP4qq68y0howMFLI-Y1WYwA0K1CNV7tkD26pxgTsjKrVd/exec"
+GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby8FtDx4t4akWrHitfrab9lJ_IT002a3O4LmOJjVLDPj4WFzRiHWvHwooSXdlciReh0/exec"
 
 def log(msg):
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
